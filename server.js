@@ -1,6 +1,4 @@
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
+require('dotenv').config();
 
 const express = require('express');
 const app = express();
@@ -9,28 +7,49 @@ const flash = require('express-flash');
 const session = require('express-session');
 const passport = require('passport');
 const methodOverride = require('method-override');
+const mongoose = require('mongoose');
+
+// Models
+const Users = require('./models/Users');
+
+// Call authentice function
+const initializePassport = require('./passportConfig');
+initializePassport(passport)
 
 const users = [];
 
-const initializePassport = require('./passportConfig');
-initializePassport(
-  passport,
-  email => users.find(user => user.email === email),
-  id => users.find(user => user.id === id)
-);
-
-// Middlewares
+// Ejs
 app.set('view engine', 'ejs');
+
+// Forms
 app.use(express.urlencoded({ extended: false }));
+
+// Connect flash
 app.use(flash());
+
+// Express session
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false
 }));
+
+// Set passport
 app.use(passport.initialize())
 app.use(passport.session())
+
+// Method override
 app.use(methodOverride('_method'));
+
+// MongoDB connection
+mongoose.connect(process.env.DATABASE_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+mongoose.connection
+  .on('error', error => console.log(error))
+  .once('open', () => console.log('Connected'));
 
 // Home route
 app.get('/', isLoggedIn, (req, res) => {
@@ -60,12 +79,13 @@ app.post('/register', isNotLoggedIn, async (req, res) => {
     const { name, email, password } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    users.push({
-      id: Date.now().toString(),
+    const user = new Users({
       name: name,
       email: email,
       password: hashedPassword
     });
+
+    await user.save();
 
     res.redirect('/login')
   } catch {
